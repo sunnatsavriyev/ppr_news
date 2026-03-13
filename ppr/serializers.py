@@ -2024,61 +2024,61 @@ class TuzilmaDashboardSerializer(serializers.Serializer):
 
 
 
-class XaridStepSerializer(serializers.ModelSerializer):
-    tuzilma_nomi = serializers.CharField(source="tuzilma.tuzilma_nomi", read_only=True)
-    user_nomi = serializers.CharField(source="user.username", read_only=True)
+# class XaridStepSerializer(serializers.ModelSerializer):
+#     tuzilma_nomi = serializers.CharField(source="tuzilma.tuzilma_nomi", read_only=True)
+#     user_nomi = serializers.CharField(source="user.username", read_only=True)
 
-    class Meta:
-        model = XaridStep
-        fields = ["id", "tuzilma_nomi", "user_nomi", "status", "comment", "sana"]
-
-
+#     class Meta:
+#         model = XaridStep
+#         fields = ["id", "tuzilma_nomi", "user_nomi", "status", "comment", "sana"]
 
 
 
 
-class XaridArizaSerializer(serializers.ModelSerializer):
-    steplar = XaridStepSerializer(many=True, read_only=True)
-    tuzilma_nomlari = serializers.SerializerMethodField()
-    tuzilmalar = serializers.PrimaryKeyRelatedField(
-        many=True, 
-        queryset=TarkibiyTuzilma.objects.all(), 
-        required=False 
-    )
-    kim_tomonidan_nomi = serializers.SerializerMethodField()
-    class Meta:
-        model = XaridAriza
-        fields = ["id", "tuzilmalar",'kim_tomonidan_nomi', "tuzilma_nomlari", "comment", "fayl", "sana", "status", "steplar"]
 
-    def get_tuzilma_nomlari(self, obj):
-        return [t.tuzilma_nomi for t in obj.tuzilmalar.all()]
+
+# class XaridArizaSerializer(serializers.ModelSerializer):
+#     steplar = XaridStepSerializer(many=True, read_only=True)
+#     tuzilma_nomlari = serializers.SerializerMethodField()
+#     tuzilmalar = serializers.PrimaryKeyRelatedField(
+#         many=True, 
+#         queryset=TarkibiyTuzilma.objects.all(), 
+#         required=False 
+#     )
+#     kim_tomonidan_nomi = serializers.SerializerMethodField()
+#     class Meta:
+#         model = XaridAriza
+#         fields = ["id", "tuzilmalar",'kim_tomonidan_nomi', "tuzilma_nomlari", "comment", "fayl", "sana", "status", "steplar"]
+
+#     def get_tuzilma_nomlari(self, obj):
+#         return [t.tuzilma_nomi for t in obj.tuzilmalar.all()]
     
     
-    def get_kim_tomonidan_nomi(self, obj):
-        user = obj.kim_tomonidan
-        if not user:
-            return "Noma'lum"
+#     def get_kim_tomonidan_nomi(self, obj):
+#         user = obj.kim_tomonidan
+#         if not user:
+#             return "Noma'lum"
         
-        # 1. To'g'ridan-to'g'ri tarkibiy tuzilmasini tekshirish
-        if user.tarkibiy_tuzilma:
-            return user.tarkibiy_tuzilma.tuzilma_nomi
+#         # 1. To'g'ridan-to'g'ri tarkibiy tuzilmasini tekshirish
+#         if user.tarkibiy_tuzilma:
+#             return user.tarkibiy_tuzilma.tuzilma_nomi
         
-        # 2. Agar bo'limi bo'lsa va u orqali tuzilmaga bog'langan bo'lsa
-        if hasattr(user, 'bolim') and user.bolim and user.bolim.tarkibiy_tuzilma:
-            return user.bolim.tarkibiy_tuzilma.tuzilma_nomi
+#         # 2. Agar bo'limi bo'lsa va u orqali tuzilmaga bog'langan bo'lsa
+#         if hasattr(user, 'bolim') and user.bolim and user.bolim.tarkibiy_tuzilma:
+#             return user.bolim.tarkibiy_tuzilma.tuzilma_nomi
             
-        # 3. Agar bekat bo'lsa
-        if user.bekat_nomi:
-            return user.bekat_nomi.bekat_nomi
+#         # 3. Agar bekat bo'lsa
+#         if user.bekat_nomi:
+#             return user.bekat_nomi.bekat_nomi
             
-        return user.username
+#         return user.username
     
     
-class XaridQarorActionSerializer(serializers.Serializer):
-    # Bu maydonlar Swagger/Form interfeysida chiqadi
-    STATUS_CHOICES = (
-        ("kelishildi", "Kelishildi"),
-        ("rad_etildi", "Rad etildi"),
-    )
-    status = serializers.ChoiceField(choices=STATUS_CHOICES)
-    comment = serializers.CharField(required=False, allow_blank=True)
+# class XaridQarorActionSerializer(serializers.Serializer):
+#     # Bu maydonlar Swagger/Form interfeysida chiqadi
+#     STATUS_CHOICES = (
+#         ("kelishildi", "Kelishildi"),
+#         ("rad_etildi", "Rad etildi"),
+#     )
+#     status = serializers.ChoiceField(choices=STATUS_CHOICES)
+#     comment = serializers.CharField(required=False, allow_blank=True)

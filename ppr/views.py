@@ -1883,192 +1883,192 @@ class PPRDashboardStatsNEW(APIView):
 
 
     
-class XaridArizaFilter(django_filters.FilterSet):
-    tuzilma = django_filters.NumberFilter(field_name='tuzilmalar__id')
-    tuzilma_nomi = django_filters.CharFilter(field_name='tuzilmalar__tuzilma_nomi', lookup_expr='icontains')
-    status = django_filters.CharFilter(lookup_expr='exact')
-    sana_dan = django_filters.DateFilter(field_name='sana', lookup_expr='gte')
+# class XaridArizaFilter(django_filters.FilterSet):
+#     tuzilma = django_filters.NumberFilter(field_name='tuzilmalar__id')
+#     tuzilma_nomi = django_filters.CharFilter(field_name='tuzilmalar__tuzilma_nomi', lookup_expr='icontains')
+#     status = django_filters.CharFilter(lookup_expr='exact')
+#     sana_dan = django_filters.DateFilter(field_name='sana', lookup_expr='gte')
     
-    class Meta:
-        model = XaridAriza
-        fields = ['status', 'tuzilma', 'created_by']    
-    
-    
+#     class Meta:
+#         model = XaridAriza
+#         fields = ['status', 'tuzilma', 'created_by']    
     
     
-class XaridArizaViewSet(viewsets.ModelViewSet):
-    pagination_class = CustomPagination
-    serializer_class = XaridArizaSerializer
-    permission_classes = [IsAuthenticated]
     
-    # Filtr backendlarini qo'shamiz
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = XaridArizaFilter
     
-    # Qidiruv maydonlari (Search)
-    search_fields = ['comment', 'tuzilmalar__tuzilma_nomi', 'created_by__username']
-    # Saralash maydonlari (Ordering)
-    ordering_fields = ['id', 'sana', 'status']
+# class XaridArizaViewSet(viewsets.ModelViewSet):
+#     pagination_class = CustomPagination
+#     serializer_class = XaridArizaSerializer
+#     permission_classes = [IsAuthenticated]
     
-    def get_queryset(self):
-        user = self.request.user
-        queryset = XaridAriza.objects.all().prefetch_related('steplar', 'tuzilmalar')
+#     # Filtr backendlarini qo'shamiz
+#     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+#     filterset_class = XaridArizaFilter
+    
+#     # Qidiruv maydonlari (Search)
+#     search_fields = ['comment', 'tuzilmalar__tuzilma_nomi', 'created_by__username']
+#     # Saralash maydonlari (Ordering)
+#     ordering_fields = ['id', 'sana', 'status']
+    
+#     def get_queryset(self):
+#         user = self.request.user
+#         queryset = XaridAriza.objects.all().prefetch_related('steplar', 'tuzilmalar')
 
-        if user.is_superuser or user.is_admin() or user.is_monitoring():
-            return queryset.order_by('-id')
+#         if user.is_superuser or user.is_admin() or user.is_monitoring():
+#             return queryset.order_by('-id')
 
-        return queryset.filter(created_by=user).order_by('-id')
+#         return queryset.filter(created_by=user).order_by('-id')
 
-    def perform_create(self, serializer):
-            user = self.request.user
+#     def perform_create(self, serializer):
+#             user = self.request.user
             
-            # 1. Monitoring huquqini tekshirish
-            if user.is_monitoring() and not user.is_superuser:
-                raise serializers.ValidationError("Monitoring xodimi yangi ariza yarata olmaydi.")
+#             # 1. Monitoring huquqini tekshirish
+#             if user.is_monitoring() and not user.is_superuser:
+#                 raise serializers.ValidationError("Monitoring xodimi yangi ariza yarata olmaydi.")
             
-            # 2. Faqat bitta save() chaqiriladi va barcha kerakli maydonlar birga yuboriladi
-            serializer.save(
-                created_by=user,
-                kim_tomonidan=user
-            )
+#             # 2. Faqat bitta save() chaqiriladi va barcha kerakli maydonlar birga yuboriladi
+#             serializer.save(
+#                 created_by=user,
+#                 kim_tomonidan=user
+#             )
 
-    def update(self, request, *args, **kwargs):
-        user = request.user
-        instance = self.get_object()
+#     def update(self, request, *args, **kwargs):
+#         user = request.user
+#         instance = self.get_object()
 
-        # 1. Ruxsatni tekshirish
-        if not (user.is_superuser or user.is_admin() or user.is_monitoring()):
-            return Response({"error": "Sizda statusni o'zgartirish huquqi yo'q."}, status=403)
+#         # 1. Ruxsatni tekshirish
+#         if not (user.is_superuser or user.is_admin() or user.is_monitoring()):
+#             return Response({"error": "Sizda statusni o'zgartirish huquqi yo'q."}, status=403)
 
         
-        data = request.data.copy()
-        if 'tuzilmalar' in data:
-            data.pop('tuzilmalar') 
+#         data = request.data.copy()
+#         if 'tuzilmalar' in data:
+#             data.pop('tuzilmalar') 
 
-        new_status = data.get("status")
+#         new_status = data.get("status")
         
-        # 3. Mantiqiy tekshiruv
-        if new_status == 'tasdiqlandi' and instance.status != 'kelishildi':
-            return Response({
-                "error": "Hali barcha tuzilmalar kelishmagan. Tasdiqlash mumkin emas."
-            }, status=400)
+#         # 3. Mantiqiy tekshiruv
+#         if new_status == 'tasdiqlandi' and instance.status != 'kelishildi':
+#             return Response({
+#                 "error": "Hali barcha tuzilmalar kelishmagan. Tasdiqlash mumkin emas."
+#             }, status=400)
 
-        # 4. Saqlash (partial=True tufayli faqat kelgan maydonlar o'zgaradi)
-        serializer = self.get_serializer(instance, data=data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+#         # 4. Saqlash (partial=True tufayli faqat kelgan maydonlar o'zgaradi)
+#         serializer = self.get_serializer(instance, data=data, partial=True)
+#         serializer.is_valid(raise_exception=True)
+#         serializer.save()
 
-        return Response({
-            "message": f"Ariza #{instance.id} statusi '{new_status}' holatiga o'tkazildi.",
-            "data": serializer.data
-        })
+#         return Response({
+#             "message": f"Ariza #{instance.id} statusi '{new_status}' holatiga o'tkazildi.",
+#             "data": serializer.data
+#         })
 
 
 
-class XaridArizaFilterKelgan(django_filters.FilterSet):
-    kim_tomonidan_nomi = django_filters.CharFilter(
-        field_name='kim_tomonidan__tarkibiy_tuzilma__tuzilma_nomi', 
-        lookup_expr='icontains'
-    )
+# class XaridArizaFilterKelgan(django_filters.FilterSet):
+#     kim_tomonidan_nomi = django_filters.CharFilter(
+#         field_name='kim_tomonidan__tarkibiy_tuzilma__tuzilma_nomi', 
+#         lookup_expr='icontains'
+#     )
 
     
-    status = django_filters.CharFilter(field_name='status', lookup_expr='exact')
+#     status = django_filters.CharFilter(field_name='status', lookup_expr='exact')
 
     
-    sana_dan = django_filters.DateFilter(field_name='sana', lookup_expr='gte')
-    sana_gacha = django_filters.DateFilter(field_name='sana', lookup_expr='lte')
+#     sana_dan = django_filters.DateFilter(field_name='sana', lookup_expr='gte')
+#     sana_gacha = django_filters.DateFilter(field_name='sana', lookup_expr='lte')
 
-    class Meta:
-        model = XaridAriza
-        fields = ['status', 'kim_tomonidan', 'created_by']
+#     class Meta:
+#         model = XaridAriza
+#         fields = ['status', 'kim_tomonidan', 'created_by']
 
-    def filter_by_any_structure(self, queryset, name, value):
-        from django.db.models import Q
-        return queryset.filter(
-            Q(kim_tomonidan__tarkibiy_tuzilma__tuzilma_nomi__icontains=value) |
-            Q(kim_tomonidan__bolim__icontains=value) |
-            Q(kim_tomonidan__bekat_nomi__icontains=value)
-        ).distinct()
+#     def filter_by_any_structure(self, queryset, name, value):
+#         from django.db.models import Q
+#         return queryset.filter(
+#             Q(kim_tomonidan__tarkibiy_tuzilma__tuzilma_nomi__icontains=value) |
+#             Q(kim_tomonidan__bolim__icontains=value) |
+#             Q(kim_tomonidan__bekat_nomi__icontains=value)
+#         ).distinct()
 
 
 
-# 2. Tuzilmalarga "Kelgan arizalar" uchun
-class XaridKelganlarViewSet(mixins.ListModelMixin, 
-                            mixins.RetrieveModelMixin, 
-                            viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated]
-    pagination_class = CustomPagination
-    search_fields = ['comment', 'tuzilmalar__tuzilma_nomi', 'created_by__username']
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = XaridArizaFilterKelgan
-    ordering_fields = ['id', 'sana', 'status']
+# # 2. Tuzilmalarga "Kelgan arizalar" uchun
+# class XaridKelganlarViewSet(mixins.ListModelMixin, 
+#                             mixins.RetrieveModelMixin, 
+#                             viewsets.GenericViewSet):
+#     permission_classes = [IsAuthenticated]
+#     pagination_class = CustomPagination
+#     search_fields = ['comment', 'tuzilmalar__tuzilma_nomi', 'created_by__username']
+#     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+#     filterset_class = XaridArizaFilterKelgan
+#     ordering_fields = ['id', 'sana', 'status']
 
-    def get_queryset(self):
-        user = self.request.user
-        queryset = XaridAriza.objects.all().prefetch_related('steplar', 'tuzilmalar').distinct()
-        if user.is_superuser or user.is_admin() or user.is_monitoring():
-            return queryset.order_by('-id')
+#     def get_queryset(self):
+#         user = self.request.user
+#         queryset = XaridAriza.objects.all().prefetch_related('steplar', 'tuzilmalar').distinct()
+#         if user.is_superuser or user.is_admin() or user.is_monitoring():
+#             return queryset.order_by('-id')
         
-        user_tz = getattr(user, 'tarkibiy_tuzilma', None) or \
-                  getattr(user, 'bekat_nomi', None) or \
-                  getattr(user, 'bolim', None)
-        return XaridAriza.objects.filter(tuzilmalar=user_tz).distinct().order_by('-id')
+#         user_tz = getattr(user, 'tarkibiy_tuzilma', None) or \
+#                   getattr(user, 'bekat_nomi', None) or \
+#                   getattr(user, 'bolim', None)
+#         return XaridAriza.objects.filter(tuzilmalar=user_tz).distinct().order_by('-id')
 
-    def get_serializer_class(self):
-        # Agar qaror qabul qilish amali bo'lsa, status va comment formasini chiqar
-        if self.action == 'qaror_qabul_qilish':
-            return XaridQarorActionSerializer
-        return XaridArizaSerializer
+#     def get_serializer_class(self):
+#         # Agar qaror qabul qilish amali bo'lsa, status va comment formasini chiqar
+#         if self.action == 'qaror_qabul_qilish':
+#             return XaridQarorActionSerializer
+#         return XaridArizaSerializer
 
-    @action(detail=True, methods=['post'])
-    def qaror_qabul_qilish(self, request, pk=None):
-        xarid = self.get_object()
-        user = request.user
-        user_tz = getattr(user, 'tarkibiy_tuzilma', None) or \
-                  getattr(user, 'bekat_nomi', None) or \
-                  getattr(user, 'bolim', None)
+#     @action(detail=True, methods=['post'])
+#     def qaror_qabul_qilish(self, request, pk=None):
+#         xarid = self.get_object()
+#         user = request.user
+#         user_tz = getattr(user, 'tarkibiy_tuzilma', None) or \
+#                   getattr(user, 'bekat_nomi', None) or \
+#                   getattr(user, 'bolim', None)
 
-        # 1. Serializer orqali ma'lumotlarni validatsiya qilish
-        serializer = XaridQarorActionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+#         # 1. Serializer orqali ma'lumotlarni validatsiya qilish
+#         serializer = XaridQarorActionSerializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
         
-        new_status = serializer.validated_data.get('status')
-        comment = serializer.validated_data.get('comment', '')
+#         new_status = serializer.validated_data.get('status')
+#         comment = serializer.validated_data.get('comment', '')
 
-        # 2. Tekshiruv: Avval qaror berilganmi?
-        if XaridStep.objects.filter(xarid=xarid, tuzilma=user_tz).exists():
-            return Response({"error": "Siz ushbu arizaga munosabat bildirib bo'lgansiz."}, 
-                            status=status.HTTP_400_BAD_REQUEST)
+#         # 2. Tekshiruv: Avval qaror berilganmi?
+#         if XaridStep.objects.filter(xarid=xarid, tuzilma=user_tz).exists():
+#             return Response({"error": "Siz ushbu arizaga munosabat bildirib bo'lgansiz."}, 
+#                             status=status.HTTP_400_BAD_REQUEST)
 
-        # 3. Step yaratish
-        XaridStep.objects.create(
-            xarid=xarid,
-            tuzilma=user_tz,
-            user=user,
-            status=new_status,
-            comment=comment
-        )
+#         # 3. Step yaratish
+#         XaridStep.objects.create(
+#             xarid=xarid,
+#             tuzilma=user_tz,
+#             user=user,
+#             status=new_status,
+#             comment=comment
+#         )
 
-        # 4. Asosiy Ariza statusini yangilash
-        if new_status == 'rad_etildi':
+#         # 4. Asosiy Ariza statusini yangilash
+#         if new_status == 'rad_etildi':
             
-            xarid.status = 'rad_etildi'
-        else:
+#             xarid.status = 'rad_etildi'
+#         else:
             
-            total_required = xarid.tuzilmalar.count()
+#             total_required = xarid.tuzilmalar.count()
             
-            current_agreed = xarid.steplar.filter(status='kelishildi').count()
+#             current_agreed = xarid.steplar.filter(status='kelishildi').count()
             
             
-            if current_agreed >= total_required:
-                xarid.status = 'kelishildi'
+#             if current_agreed >= total_required:
+#                 xarid.status = 'kelishildi'
             
         
-        xarid.save()
-        return Response({
-            "message": f"Qaroringiz qabul qilindi. Ariza statusi: {xarid.status}",
-            "status": xarid.status
-        }, status=status.HTTP_201_CREATED)
+#         xarid.save()
+#         return Response({
+#             "message": f"Qaroringiz qabul qilindi. Ariza statusi: {xarid.status}",
+#             "status": xarid.status
+#         }, status=status.HTTP_201_CREATED)
     
     
     
