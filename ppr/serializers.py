@@ -1,0 +1,2084 @@
+from calendar import calendar
+from datetime import timedelta, timezone
+from urllib import request
+from attr import attrs
+from rest_framework import serializers
+from .models import *
+import os
+import random
+import json
+from django.db.models import Q
+from django.db import transaction
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.utils import timezone
+def generate_unique_passport():
+    while True:
+        code = f"AD{random.randint(1000000, 9999999)}"
+        if not Bekat.objects.filter(passport_seriya=code).exists():
+            return code
+
+
+
+ALLOWED_EXTENSIONS = [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".heic",
+    ".heif",
+    ".avif",
+]
+
+def validate_image_format(image):
+    ext = os.path.splitext(image.name)[1].lower()
+    content_type = image.content_type.lower()
+
+    allowed_ext = [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".heic",
+        ".heif",
+        ".avif",
+    ]
+
+    allowed_mime = [
+        "image/jpeg",
+        "image/png",
+        "image/heic",
+        "image/heif",
+        "image/avif",                 
+        "application/octet-stream",  
+        "binary/octet-stream"
+    ]
+
+    if ext not in allowed_ext and content_type not in allowed_mime:
+        raise serializers.ValidationError(
+            f"Rasm formati qo‘llab-quvvatlanmaydi! ({content_type} / {ext}). "
+            "Faqat JPG, JPEG, PNG, HEIC, HEIF, AVIF formatlari ruxsat etiladi."
+        )
+
+
+class UserTuzilmaSerializer(serializers.ModelSerializer):
+    bekat_nomi = serializers.CharField(required=False, allow_null=True)
+    tuzilma_nomi = serializers.CharField(required=False)
+    bolim_nomi = serializers.CharField(
+    source="bolim_profile.bolim_category.nomi",
+    read_only=True
+    )
+    bolim_name = serializers.CharField(required=False, allow_blank=True)
+    faoliyati = serializers.CharField(required=False, allow_blank=True)
+    rahbari = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False, allow_null=True)
+    birth_date = serializers.DateField(required=False, allow_null=True, input_formats=['%d-%m-%Y', '%d.%m.%Y', '%Y-%m-%d'],)
+    photo = serializers.ImageField(required=False, allow_null=True)
+    passport_seriya = serializers.CharField(required=False)
+    status = serializers.BooleanField(required=False)
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        min_length=6
+    )
+
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            "id", "username", "password", "role",
+            "tarkibiy_tuzilma", "tarkibiy_tuzilma_id", "bekat_nomi", "bolim_nomi","bolim_id","bolim_name",
+            "tuzilma_nomi", "faoliyati", "rahbari",
+            "email", "birth_date",
+            "passport_seriya", "status", "photo"
+        ]
+        extra_kwargs = {
+            "tarkibiy_tuzilma": {"read_only": True},
+        }
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get("request")  
+
+        if instance.bekat_nomi:
+            rep["status"] = instance.bekat_nomi.status
+            rep["faoliyati"] = instance.bekat_nomi.faoliyati
+            if instance.bekat_nomi.photo:
+                rep["photo"] = request.build_absolute_uri(instance.bekat_nomi.photo.url)
+            else:
+                rep["photo"] = None
+            rep["bekat_nomi"] = instance.bekat_nomi.bekat_nomi 
+            rep["rahbari"] = instance.bekat_nomi.rahbari
+            rep["email"] = instance.bekat_nomi.email
+            rep["birth_date"] = instance.bekat_nomi.birth_date.strftime("%d-%m-%Y") if instance.bekat_nomi.birth_date else None
+            rep["passport_seriya"] = instance.bekat_nomi.passport_seriya
+            rep["created_at"] = instance.bekat_nomi.created_at.strftime("%d-%m-%Y") if instance.bekat_nomi.created_at else None
+            rep["created_by"] = instance.bekat_nomi.created_by.username if instance.bekat_nomi.created_by else None
+            
+        if instance.role == "monitoring" and instance.monitoring:
+            m = instance.monitoring
+
+            rep["status"] = m.status
+            rep["faoliyati"] = m.faoliyati
+            rep["rahbari"] = m.rahbari
+            rep["email"] = m.email
+            rep["birth_date"] = m.birth_date.strftime("%d-%m-%Y") if m.birth_date else None
+            rep["passport_seriya"] = m.passport_seriya
+            rep["created_at"] = m.created_at.strftime("%d-%m-%Y") if m.created_at else None
+            rep["created_by"] = m.created_by.username if m.created_by else None
+
+            if m.photo:
+                rep["photo"] = request.build_absolute_uri(m.photo.url)
+            else:
+                rep["photo"] = None
+
+
+        elif instance.role == "tarkibiy" and instance.tarkibiy_tuzilma:
+            rep["status"] = instance.tarkibiy_tuzilma.status
+            rep["faoliyati"] = instance.tarkibiy_tuzilma.faoliyati
+            if instance.tarkibiy_tuzilma.photo:
+                rep["photo"] = request.build_absolute_uri(instance.tarkibiy_tuzilma.photo.url)
+            else:
+                rep["photo"] = None
+            rep["tarkibiy_tuzilma"] = instance.tarkibiy_tuzilma.tuzilma_nomi
+            rep["tarkibiy_tuzilma_id"] = instance.tarkibiy_tuzilma.id
+            rep["rahbari"] = instance.tarkibiy_tuzilma.rahbari
+            rep["email"] = instance.tarkibiy_tuzilma.email
+            rep["birth_date"] = instance.tarkibiy_tuzilma.birth_date.strftime("%d-%m-%Y") if instance.tarkibiy_tuzilma.birth_date else None
+            rep["passport_seriya"] = instance.tarkibiy_tuzilma.passport_seriya
+            rep["created_at"] = instance.tarkibiy_tuzilma.created_at.strftime("%d-%m-%Y") if instance.tarkibiy_tuzilma.created_at else None
+            rep["created_by"] = instance.tarkibiy_tuzilma.created_by.username if instance.tarkibiy_tuzilma.created_by else None
+
+        elif instance.role == "admin" or instance.is_superuser:
+            rep["faoliyati"] = "Admin foydalanuvchi"
+            rep["photo"] = request.build_absolute_uri(instance.photo.url) if instance.photo else None
+            rep["email"] = instance.email
+            rep["rahbari"] = instance.username
+            rep["birth_date"] = instance.birth_date.strftime("%d-%m-%Y") if instance.birth_date else None
+            rep["status"] = True
+            rep["passport_seriya"] = instance.passport_seriya
+            
+
+
+            
+            
+        if instance.role == "bolim":
+            bolim = getattr(instance, "bolim_profile", None)
+            if bolim:
+                rep["faoliyati"] = bolim.faoliyati
+                rep["rahbari"] = bolim.rahbari
+                rep["email"] = bolim.email
+                rep["birth_date"] = bolim.birth_date.strftime("%d-%m-%Y") if bolim.birth_date else None
+                rep["passport_seriya"] = bolim.passport_seriya
+                rep["status"] = bolim.status
+                if bolim.photo:
+                    rep["photo"] = request.build_absolute_uri(bolim.photo.url) if request else bolim.photo.url
+                
+                # CustomUser dagi FK ni o'rniga bolim_nomi ni yozish
+                rep["bolim_nomi"] = bolim.bolim_category.nomi if bolim.bolim_category else None
+                rep["bolim_id"] = bolim.id
+                rep["tarkibiy_tuzilma"] = bolim.tuzilma.tuzilma_nomi if bolim.tuzilma else None
+                rep["tarkibiy_tuzilma_id"] = bolim.tuzilma.id
+                rep["created_at"] = (
+                    bolim.created_at.strftime("%d-%m-%Y")
+                    if bolim.created_at else None
+                )
+                rep["created_by"] = (
+                    bolim.created_by.username
+                    if bolim.created_by else None
+                )
+
+
+
+
+        show_password = False
+        if request:
+            if request.user.is_admin() or request.user.is_superuser:
+                show_password = True
+            elif request.user.id == instance.id:
+                show_password = True
+
+        if show_password:
+            rep["password"] = getattr(instance, "_raw_password", None)
+        else:
+            rep["password"] = None  
+
+        return rep
+
+
+    def get_bolim_nomi(self, instance):
+        bolim = getattr(instance, "bolim_profile", None)
+        if bolim and bolim.bolim_category:
+            return bolim.bolim_category.nomi
+        return None
+
+
+
+
+
+    # ---------- Validatsiya ----------
+    def validate(self, attrs):
+        # 1. Ma'lumotlarni olish
+        role = attrs.get("role", getattr(self.instance, "role", None))
+        is_create = self.instance is None
+        
+        # 2. HAMMA rollar uchun majburiy maydonlar
+        required_fields = ["username", "role", "faoliyati", "rahbari"]
+        if is_create:
+            required_fields.append("password")
+
+        errors = {}
+
+        # 3. Maydonlarni birma-bir tekshirish
+        for field in required_fields:
+            value = attrs.get(field)
+            
+            # Agar attrs'da yo'q bo'lsa (Update holatida), instance'dan olamiz
+            if value is None and not is_create:
+                value = getattr(self.instance, field, None)
+
+            # Bo'shlikka tekshirish
+            if value is None or (isinstance(value, str) and len(str(value).strip()) == 0):
+                errors[field] = f"{field.replace('_', ' ').capitalize()} maydoni to'ldirilishi majburiy!"
+
+        # 4. Agar birorta maydon bo'sh bo'lsa, xatoni qaytarish
+        if errors:
+            errors["message"] = "Iltimos, barcha majburiy maydonlarni to'ldiring!"
+            raise serializers.ValidationError(errors)
+
+        # 5. ROLGA qarab qo'shimcha tekshiruvlar (Faqat umumiy maydonlar to'la bo'lsa ishlaydi)
+        if role == "tarkibiy":
+            tuzilma_nomi = attrs.get("tuzilma_nomi")
+            if not tuzilma_nomi and not getattr(self.instance, "tarkibiy_tuzilma", None):
+                raise serializers.ValidationError({
+                    "tuzilma_nomi": "Tarkibiy tuzilma nomi majburiy!",
+                    "message": "Iltimos, tuzilma nomini kiriting!"
+                })
+            
+            # Unikallikni tekshirish
+            if tuzilma_nomi:
+                existing = TarkibiyTuzilma.objects.filter(tuzilma_nomi=tuzilma_nomi)
+                if not is_create and self.instance.tarkibiy_tuzilma:
+                    existing = existing.exclude(id=self.instance.tarkibiy_tuzilma.id)
+                
+                if existing.exists():
+                    raise serializers.ValidationError({
+                        "tuzilma_nomi": "Ushbu nomli tuzilma allaqachon mavjud!",
+                        "message": "Boshqa tuzilma nomi tanlang!"
+                    })
+
+        elif role == "bekat":
+            if not attrs.get("bekat_nomi") and not getattr(self.instance, "bekat_nomi", None):
+                raise serializers.ValidationError({
+                    "bekat_nomi": "Bekat tanlanishi shart!",
+                    "message": "Iltimos, bekat nomini tanlang!"
+                })
+
+        return attrs
+
+    # ---------- Create ----------
+    def create(self, validated_data):
+        raw_password = validated_data.pop("password")
+        role = validated_data["role"]
+        uploaded_photo = validated_data.pop("photo", None)
+
+        # Tarkibiy tuzilma yaratish
+        tuzilma = None
+        if role == "tarkibiy":
+            tuzilma = TarkibiyTuzilma.objects.create(
+                tuzilma_nomi=validated_data["tuzilma_nomi"],
+                faoliyati=validated_data["faoliyati"],
+                rahbari=validated_data["rahbari"],
+                passport_seriya = validated_data.get("passport_seriya", None),
+                status=validated_data.get("status", False),
+                is_pending=True,
+                photo=uploaded_photo,
+                email=validated_data.get("email", None),
+                birth_date=validated_data.get("birth_date", None),
+                created_by=self.context["request"].user
+            )
+
+        # USER YARATISH
+        user = CustomUser.objects.create_user(
+            username=validated_data["username"],
+            password=raw_password,
+            role=role
+        )
+        
+        if role == "admin":
+            user.email = validated_data.get("email", "")
+            user.birth_date = validated_data.get("birth_date")
+            user.passport_seriya = validated_data.get("passport_seriya")
+            if uploaded_photo:
+                user.photo = uploaded_photo
+            user._raw_password = raw_password
+            user.save()
+            return user
+
+        if role == "tarkibiy":
+            user.tarkibiy_tuzilma = tuzilma
+            
+        if role == "monitoring":
+            monitoring = Monitoring.objects.create(
+                faoliyati=validated_data.get("faoliyati", "Monitoring xodimi"),
+                rahbari=validated_data.get("rahbari", ""),
+                status=validated_data.get("status", True),
+                email=validated_data.get("email"),
+                birth_date=validated_data.get("birth_date"),
+                passport_seriya=validated_data.get("passport_seriya"),
+                photo=uploaded_photo,
+                created_by=self.context["request"].user
+            )
+
+            user.monitoring = monitoring
+            user._raw_password = raw_password
+            user.save()
+            return user
+
+
+
+
+        if role == "bekat":
+            bekat_value = validated_data.get("bekat_nomi")
+            if isinstance(bekat_value, str):
+                # har doim yangi bekat yaratish
+                bekat_obj = Bekat.objects.create(
+                    bekat_nomi=bekat_value,
+                    faoliyati=validated_data.get("faoliyati", ""),
+                    rahbari=validated_data.get("rahbari", ""),
+                    passport_seriya=validated_data.get("passport_seriya", generate_unique_passport()),
+                    status=validated_data.get("status", False),
+                    photo=uploaded_photo,
+                    email=validated_data.get("email", None),
+                    birth_date=validated_data.get("birth_date", None),
+                    created_by=self.context["request"].user
+                )
+                user.bekat_nomi = bekat_obj
+
+
+        user._raw_password = raw_password
+        user.save()
+        return user
+
+    # ---------- Update ----------
+    def update(self, instance, validated_data):
+        raw_password = validated_data.get("password")
+        uploaded_photo = validated_data.pop("photo", None)
+        if raw_password:
+            instance.set_password(raw_password)
+            instance._raw_password = raw_password
+
+        instance.username = validated_data.get("username", instance.username)
+        new_role = validated_data.get("role", instance.role)
+        status_value = validated_data.get("status", None)
+        email_value = validated_data.get("email")
+        birth_value = validated_data.get("birth_date")
+
+        # --------- Rol o'zgarganda faqat rol va nom bog'lanishini o'chirish ---------
+        if instance.role != new_role:
+            if instance.role == "bekat" and new_role == "tarkibiy":
+                # eski bekat nomi va roli o'chadi, qolgan maydonlar saqlanadi
+                old_bekat_photo = instance.bekat_nomi.photo if instance.bekat_nomi else None
+                instance.bekat_nomi = None
+            elif instance.role == "tarkibiy" and new_role == "bekat":
+                old_tuzilma_photo = instance.tarkibiy_tuzilma.photo if instance.tarkibiy_tuzilma else None
+                instance.tarkibiy_tuzilma = None
+
+        # ------------------ TARKIBIY ------------------
+        if new_role == "tarkibiy":
+            t = instance.tarkibiy_tuzilma
+            if t:
+                t.tuzilma_nomi = validated_data.get("tuzilma_nomi", t.tuzilma_nomi)
+                t.faoliyati = validated_data.get("faoliyati", t.faoliyati)
+                t.rahbari = validated_data.get("rahbari", t.rahbari)
+                t.passport_seriya = validated_data.get("passport_seriya", t.passport_seriya)
+                t.status = status_value if status_value is not None else t.status
+                t.email = email_value if email_value is not None else t.email
+                t.birth_date = birth_value if birth_value is not None else t.birth_date
+                if uploaded_photo is not None:
+                    t.photo = uploaded_photo
+                elif instance.role == "bekat" and old_bekat_photo:
+                    t.photo = old_bekat_photo
+                t.save()
+            else:
+                t = TarkibiyTuzilma.objects.create(
+                    tuzilma_nomi=validated_data.get("tuzilma_nomi", ""),
+                    faoliyati=validated_data.get("faoliyati", ""),
+                    rahbari=validated_data.get("rahbari", ""),
+                    passport_seriya=validated_data.get("passport_seriya", generate_unique_passport()),
+                    status=status_value if status_value is not None else False,
+                    photo=uploaded_photo if uploaded_photo else (old_bekat_photo if instance.role=="bekat" else None),
+                    email=email_value,
+                    birth_date=birth_value,
+                    is_pending=True,
+                    created_by=self.context["request"].user
+                )
+                instance.tarkibiy_tuzilma = t
+
+        # ------------------ BEKAT ------------------
+        elif new_role == "bekat":
+            bekat_value = validated_data.get("bekat_nomi")
+            if isinstance(bekat_value, str):
+                bekat_obj, created = Bekat.objects.get_or_create(
+                    bekat_nomi=bekat_value,
+                    defaults={
+                        "faoliyati": validated_data.get("faoliyati", ""),
+                        "rahbari": validated_data.get("rahbari", ""),
+                        "passport_seriya": generate_unique_passport(),
+                        "status": status_value if status_value is not None else False,
+                        "photo": uploaded_photo if uploaded_photo else (old_tuzilma_photo if instance.role=="tarkibiy" else None),
+                        "email": email_value,
+                        "birth_date": birth_value,
+                        "created_by": self.context["request"].user
+                    }
+                )
+                if not created:
+                    if "faoliyati" in validated_data:
+                        bekat_obj.faoliyati = validated_data["faoliyati"]
+                    if "rahbari" in validated_data:
+                        bekat_obj.rahbari = validated_data["rahbari"]
+                    if "passport_seriya" in validated_data:
+                        bekat_obj.passport_seriya = validated_data["passport_seriya"]
+                    if "status" in validated_data:
+                        bekat_obj.status = validated_data["status"]
+
+                    if email_value is not None:
+                        bekat_obj.email = email_value
+                    if birth_value is not None:
+                        bekat_obj.birth_date = birth_value
+
+                    if uploaded_photo is not None:
+                        bekat_obj.photo = uploaded_photo
+
+                    bekat_obj.save()
+
+                instance.bekat_nomi = bekat_obj
+                
+        # ------------------ BOLIM ------------------
+        elif new_role == "bolim":
+            bolim_profile = getattr(instance, "bolim_profile", None)
+            if bolim_profile:
+                # mavjud profilni yangilash
+                bolim_nomi_new = validated_data.get("bolim_nomi")
+                if bolim_nomi_new:  
+                    bolim_profile.bolim_nomi = bolim_nomi_new
+
+                bolim_profile.faoliyati = validated_data.get("faoliyati", bolim_profile.faoliyati)
+                bolim_profile.rahbari = validated_data.get("rahbari", bolim_profile.rahbari)
+                bolim_profile.passport_seriya = validated_data.get("passport_seriya", bolim_profile.passport_seriya)
+                bolim_profile.status = validated_data.get("status", bolim_profile.status)
+                bolim_profile.email = validated_data.get("email", bolim_profile.email)
+                bolim_profile.birth_date = validated_data.get("birth_date", bolim_profile.birth_date)
+                if uploaded_photo is not None:
+                    bolim_profile.photo = uploaded_photo
+                bolim_profile.save()
+            else:
+                # yangi bolim profilini yaratish
+                if instance.tarkibiy_tuzilma:
+                    bolim_profile = Bolim.objects.create(
+                        user=instance,
+                        tuzilma=instance.tarkibiy_tuzilma,
+                        bolim_nomi=validated_data.get("bolim_nomi", ""),  # yangi yaratishda bo'sh bo'lishi mumkin
+                        faoliyati=validated_data.get("faoliyati", ""),
+                        rahbari=validated_data.get("rahbari", ""),
+                        passport_seriya=validated_data.get("passport_seriya", generate_unique_passport()),
+                        status=validated_data.get("status", True),
+                        photo=uploaded_photo if uploaded_photo else None,
+                        email=validated_data.get("email"),
+                        birth_date=validated_data.get("birth_date"),
+                        created_by=self.context["request"].user
+                    )
+                instance.bolim_profile = bolim_profile
+
+
+
+        # ------------------ MONITORING ------------------
+        elif new_role == "monitoring":
+            monitoring = instance.monitoring
+
+            if monitoring:
+                monitoring.faoliyati = validated_data.get("faoliyati", monitoring.faoliyati)
+                monitoring.rahbari = validated_data.get("rahbari", monitoring.rahbari)
+                monitoring.status = validated_data.get("status", monitoring.status)
+                monitoring.email = email_value if email_value is not None else monitoring.email
+                monitoring.birth_date = birth_value if birth_value is not None else monitoring.birth_date
+                monitoring.passport_seriya = validated_data.get(
+                    "passport_seriya", monitoring.passport_seriya
+                )
+
+                if uploaded_photo is not None:
+                    monitoring.photo = uploaded_photo
+
+                monitoring.save()
+
+
+
+
+        elif new_role == "admin":
+            if "email" in validated_data:
+                instance.email = validated_data["email"]
+            if "birth_date" in validated_data:
+                instance.birth_date = validated_data["birth_date"]
+            if "passport_seriya" in validated_data:
+                instance.passport_seriya = validated_data["passport_seriya"]
+            if uploaded_photo is not None:
+                instance.photo = uploaded_photo
+            
+
+        instance.role = new_role
+        instance.save()
+        return instance
+
+
+
+class TuzilmaSerializers(serializers.ModelSerializer):
+    class Meta:
+        model = TarkibiyTuzilma
+        fields = "__all__"
+
+
+class BolimCategorySerializer(serializers.ModelSerializer):
+    tuzilma_nomi = serializers.CharField(source='tuzilma.tuzilma_nomi', read_only=True)
+    class Meta:
+        model = BolimCategory
+        fields = ['id', 'nomi', 'tuzilma', 'tuzilma_nomi','created_at']
+        read_only_fields = ['tuzilma', 'created_by']
+        
+        
+        
+
+class BolimUserSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, default="1234")
+    tuzilma = serializers.PrimaryKeyRelatedField(read_only=True)
+    tuzilma_nomi = serializers.CharField(source="tuzilma.tuzilma_nomi", read_only=True)
+    bolim_category_id = serializers.PrimaryKeyRelatedField(
+        queryset=BolimCategory.objects.none(), 
+        source='bolim_category', 
+        write_only=True,
+        required=True
+    )
+    bolim_nomi = serializers.CharField(source='bolim_category.nomi', read_only=True)
+    class Meta:
+        model = Bolim
+        fields = [
+            "id", "tuzilma", "tuzilma_nomi", "bolim_category_id", "bolim_nomi",
+            "username", "password",
+            "faoliyati", "rahbari", "photo", "email",
+            "birth_date", "passport_seriya", "status", "created_at"
+        ]
+        read_only_fields = ["created_at"]
+        
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = self.context['request'].user
+
+        # Agar user admin / superuser bo'lsa hamma kategoriyalarni ko'rsatamiz
+        if user.is_superuser or user.role in ["admin", "monitoring"]:
+            self.fields['bolim_category_id'].queryset = BolimCategory.objects.all()
+        # Foydalanuvchi tarkibiy bo'lsa, faqat o'z tuzilmasidagi kategoriyalar
+        elif user.role == "tarkibiy" and user.tarkibiy_tuzilma:
+            self.fields['bolim_category_id'].queryset = BolimCategory.objects.filter(
+                tuzilma=user.tarkibiy_tuzilma
+            )
+        else:
+            self.fields['bolim_category_id'].queryset = BolimCategory.objects.none()
+            
+            
+            
+    def validate(self, attrs):
+        is_create = self.instance is None
+        
+        # 1. Tekshirilishi kerak bo'lgan maydonlar ro'yxati
+        check_fields = ["username", "faoliyati", "rahbari", "bolim_category"]
+        if is_create:
+            check_fields.append("password")
+
+        errors = {}
+
+        # 2. Bo'shlikka tekshirish mantiqi
+        for field in check_fields:
+            # source='bolim_category' bo'lgani uchun attrs'da 'bolim_category' deb keladi
+            value = attrs.get(field)
+
+            if value is None or (isinstance(value, str) and len(str(value).strip()) == 0):
+                # Tashqi ko'rinish uchun bolim_category -> bolim_category_id deb ko'rsatamiz
+                error_key = "bolim_category_id" if field == "bolim_category" else field
+                errors[error_key] = "Ushbu maydon to'ldirilishi majburiy!"
+
+        # 3. Agar xatolar bo'lsa, umumiy message bilan qaytarish
+        if errors:
+            errors["message"] = "Iltimos, barcha majburiy maydonlarni to'ldiring!"
+            raise serializers.ValidationError(errors)
+
+        # 4. Qo'shimcha mantiqiy validatsiyalar (Tuzilma mosligi)
+        user = self.context['request'].user
+        bolim_category = attrs.get("bolim_category")
+
+        if user.role == "tarkibiy":
+            tuzilma = user.tarkibiy_tuzilma
+            if bolim_category and bolim_category.tuzilma != tuzilma:
+                raise serializers.ValidationError({
+                    "bolim_category_id": "Bu bo'lim nomi sizning tuzilmangizga tegishli emas!",
+                    "message": "Xato bo'lim tanlandi!"
+                })
+
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        request = self.context.get("request")
+        user = request.user
+
+        username = validated_data.pop("username")
+        password = validated_data.pop("password")
+        
+        # source='bolim_category' orqali kelgan ob'ekt
+        bolim_category = validated_data.pop("bolim_category", None)  
+
+        # -------- TUZILMA TEKSHIRUVI --------
+        if user.role == "tarkibiy":
+            tuzilma = user.tarkibiy_tuzilma
+            if not tuzilma:
+                raise serializers.ValidationError({"tuzilma": "Sizga tuzilma biriktirilmagan"})
+            if bolim_category.tuzilma != tuzilma:
+                raise serializers.ValidationError({"bolim_category_id": "Bu bo'lim nomi sizning tuzilmangizga tegishli emas!"})
+        elif user.role in ["admin", "superuser"]:
+            tuzilma = validated_data.pop("tuzilma", None) or user.tarkibiy_tuzilma
+        else:
+            raise serializers.PermissionDenied("Bo‘lim yaratishga ruxsatingiz yo‘q")
+
+        # -------- USER YARATISH --------
+        new_user = CustomUser.objects.create_user(
+            username=username,
+            password=password,
+            role="bolim",
+            tarkibiy_tuzilma=tuzilma
+        )
+        new_user._raw_password = password
+        new_user.save()
+
+        # -------- BO‘LIM PROFILINI YARATISH --------
+        bolim = Bolim.objects.create(
+            user=new_user,
+            tuzilma=tuzilma,
+            bolim_category=bolim_category,
+            created_by=user,
+            **validated_data  # endi bu yerda validated_data ichida tuzilma yo'q
+        )
+
+        new_user.bolim_profile = bolim
+        new_user.save()
+
+        return bolim
+
+
+
+
+
+
+class ArizaImagesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArizaYuborishImage
+        fields = ["id","rasm"]
+
+
+
+
+class StepSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    comment = serializers.CharField()
+    extra_comment = serializers.CharField()
+    status = serializers.CharField()
+    created_by = serializers.CharField(allow_null=True)
+    is_approved = serializers.BooleanField()
+    sana = serializers.DateTimeField()
+
+
+
+
+class TuzilmaTargetSerializer(serializers.Serializer):
+    tuzilma = serializers.PrimaryKeyRelatedField(
+        queryset=TarkibiyTuzilma.objects.all(),
+        required=True
+    )
+    extra_comment = serializers.CharField(required=False, allow_blank=True)
+
+
+
+class ArizaYuborishSerializer(serializers.ModelSerializer):
+    # O'qish uchun (GET)
+    tuzilmalar = serializers.PrimaryKeyRelatedField(
+        read_only=True, 
+        many=True
+    )
+    
+    # YOZISH UCHUN (POST) - yangi format
+    # Bu yerda [{tuzilma: 1, extra_comment: "A"}, {tuzilma: 2, extra_comment: "B"}] keladi
+    targets = TuzilmaTargetSerializer(many=True, write_only=True,required=False)
+
+    # Qolgan maydonlar o'zgarishsiz...
+    parol = serializers.CharField(write_only=True)
+    photos = serializers.ListField(
+        child=serializers.ImageField(),
+        write_only=True,
+        required=False
+    )
+    bildirgi = serializers.FileField(required=False)
+    rasmlar = ArizaImagesSerializer(many=True, read_only=True)
+    tuzilma_nomlari = serializers.SerializerMethodField()
+    kim_tomonidan = serializers.SerializerMethodField()
+    created_by = serializers.CharField(source="created_by.username", read_only=True)
+    sana = serializers.DateTimeField(format="%d-%m-%Y", read_only=True)
+    ijro_muddati = serializers.DateField(
+        format="%d-%m-%Y",
+        required=False,
+        allow_null=True
+    )
+
+    steplar = serializers.SerializerMethodField()
+    muddati_otgan = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ArizaYuborish
+        fields = [
+            "id", "comment", "parol", 
+            "tuzilmalar",  
+            "targets",     
+            "tuzilma_nomlari", "kim_tomonidan", 
+            "created_by", "status", 'turi', 'ijro_muddati', 
+            "is_approved", "photos", "rasmlar", "bildirgi", 
+            "steplar", "qayta_yuklandi", "sana", 
+            "extra_comment" ,"muddati_otgan"
+        ]
+        read_only_fields = ["kim_tomonidan", "created_by", "status", "is_approved", 'steplar', 'extra_comment','bolim']
+
+    
+    def get_tuzilma_nomlari(self, obj):
+        return [t.tuzilma_nomi for t in obj.tuzilmalar.all()]
+    
+    
+    
+    def to_representation(self, instance):
+        """ Har safar ma'lumotni ko'rganda muddatni tekshiradi """
+        today = timezone.now().date()
+        
+        # Agar turi 'ijro' bo'lsa, muddati bo'lsa va hali False bo'lsa tekshiramiz
+        if (instance.turi == "ijro" and 
+            instance.ijro_muddati and 
+            instance.ijro_muddati < today and 
+            not instance.muddati_otgan):
+            
+            instance.muddati_otgan = True
+            instance.save(update_fields=['muddati_otgan'])
+            
+        return super().to_representation(instance)
+    
+    
+    
+    def get_kim_tomonidan(self, obj):
+        user = obj.kim_tomonidan
+        if not user:
+            return None
+        
+        request = self.context.get('request')
+        photo_url = None
+        name = user.username  # Default qiymat
+
+        # 1. Bekat foydalanuvchisi bo'lsa
+        if user.bekat_nomi:
+            name = user.bekat_nomi.bekat_nomi
+            if user.bekat_nomi.photo:
+                photo_url = request.build_absolute_uri(user.bekat_nomi.photo.url) if request else None
+
+        # 2. Tarkibiy tuzilma foydalanuvchisi bo'lsa
+        elif user.tarkibiy_tuzilma:
+            name = user.tarkibiy_tuzilma.tuzilma_nomi
+            if user.tarkibiy_tuzilma.photo:
+                photo_url = request.build_absolute_uri(user.tarkibiy_tuzilma.photo.url) if request else None
+
+        # 3. Bo'lim foydalanuvchisi bo'lsa (Siz so'ragan qism)
+        # Agar user.tarkibiy_tuzilma bo'lmasa, lekin bo'limi orqali unga bog'langan bo'lsa
+        elif hasattr(user, 'bolim') and user.bolim and user.bolim.tarkibiy_tuzilma:
+            name = user.bolim.tarkibiy_tuzilma.tuzilma_nomi
+            if user.bolim.tarkibiy_tuzilma.photo:
+                photo_url = request.build_absolute_uri(user.bolim.tarkibiy_tuzilma.photo.url) if request else None
+        
+        # 4. Agar yuqoridagilarning hech biri bo'lmasa, userning o'z rasmi
+        else:
+            if user.photo:
+                photo_url = request.build_absolute_uri(user.photo.url) if request else None
+
+        return {
+            "name": name,
+            "photo": photo_url
+        }
+
+    
+    
+    def validate_photos(self, photos):
+        for img in photos:
+            validate_image_format(img)
+        return photos
+
+    
+    def get_steplar(self, obj):
+        request = self.context.get('request')
+        steps = []
+
+
+        # 2. Kelgan snapshotlar (KelganArizalar)
+        for step in obj.kelganlar.all().order_by('id'):
+            step_rasmlar = [request.build_absolute_uri(img.rasm.url) for img in step.rasmlar.all()]
+            steps.append({
+                "id": step.id,
+                "comment": step.comment,
+                "status": step.status,
+                "created_by": step.created_by.username if step.created_by else None,
+                "is_approved": step.is_approved,
+                "sana": step.sana,
+                "akt_file": request.build_absolute_uri(step.akt_file.url) if step.akt_file else None,
+                "ilovalar": request.build_absolute_uri(step.ilovalar.url) if step.ilovalar else None,
+                "bildirgi": request.build_absolute_uri(step.bildirgi.url) if getattr(step, 'bildirgi', None) else None,
+                "rasmlar": step_rasmlar
+            })
+
+        return steps
+
+
+    
+    
+    
+    def validate_parol(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Parol noto'g'ri!")
+        return value
+
+    
+    
+    def to_internal_value(self, data):
+        """
+        Frontenddan kelayotgan FormData ichidagi string-JSONlarni 
+        haqiqiy Python formatiga o'tkazib beradi.
+        """
+        # data - bu QueryDict (immutable). Uni o'zgartirish uchun nusxa olamiz.
+        try:
+            mutable_data = data.dict() # Agar bitta qiymatli maydonlar bo'lsa
+        except AttributeError:
+            mutable_data = data.copy()
+
+        # 1. targets - agar string bo'lsa (JSON.stringify qilingan bo'lsa)
+        targets = data.get('targets')
+        if isinstance(targets, str):
+            try:
+                mutable_data['targets'] = json.loads(targets)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # 2. photos - FormData bir xil nomli bir nechta faylni yuborganda 
+        # faqat oxirgisini olishi mumkin, shuning uchun list qilib olamiz
+        if hasattr(data, 'getlist'):
+            photos = data.getlist('photos')
+            if photos:
+                mutable_data['photos'] = photos
+
+        return super().to_internal_value(mutable_data)
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        
+        # 1. Frontenddan kelgan targets (tuzilma + extra_comment) ro'yxatini ajratib olamiz
+        targets_data = validated_data.pop("targets", [])
+        photos = validated_data.pop("photos", [])
+        
+        if not targets_data:
+            raise serializers.ValidationError({"targets": "Kamida bitta tuzilma tanlanishi shart."})
+
+        created_arizalar = []
+
+        for item in targets_data:
+            tuzilma_obj = item['tuzilma']          
+            specific_comment = item.get('extra_comment', "") 
+
+            ariza = ArizaYuborish.objects.create(
+                comment=validated_data.get("comment"),     
+                extra_comment=specific_comment,             
+                parol=validated_data.get("parol"),
+                turi=validated_data.get("turi", "ijro"),
+                ijro_muddati=validated_data.get("ijro_muddati") if validated_data.get("turi") == "ijro" else None,
+                created_by=user,
+                kim_tomonidan=user,
+                bolim=user.bolim if hasattr(user, 'bolim') else None,
+                bildirgi=validated_data.get("bildirgi"),   
+                status="jarayonda",
+                is_approved=user.is_superuser
+            )
+            
+            # 4. Tuzilmani bog'laymiz 
+            # (Sizning modelingizda M2M, shuning uchun add qilamiz, lekin baribir bitta tuzilma bo'ladi)
+            ariza.tuzilmalar.add(tuzilma_obj)
+
+            # 5. Rasmlarni har bir ariza uchun alohida saqlaymiz
+            for img in photos:
+                ArizaYuborishImage.objects.create(ariza=ariza, rasm=img)
+            
+            created_arizalar.append(ariza)
+
+        return created_arizalar[-1]
+    
+    
+    def validate(self, attrs):
+                
+        if self.instance:
+            locked_statuses = ['bajarilgan', 'rad_etilgan']
+            
+            if self.instance.status in locked_statuses:
+                if 'ijro_muddati' in attrs or 'comment' in attrs:
+                    raise serializers.ValidationError(
+                        f"Ariza '{self.instance.get_status_display()}' holatida. Uni tahrirlash taqiqlangan!"
+                    )
+        return attrs
+    
+    
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+
+        
+        locked_statuses = ['bajarilgan']
+        
+        if instance.status in locked_statuses:
+            return instance
+        # 1. Ma'lumotlarni olish (kelmasa eskisini saqlab qolish)
+        new_comment = validated_data.get("comment", instance.comment)
+        new_photos = validated_data.pop("photos", None)
+        new_bildirgi = validated_data.get("bildirgi", instance.bildirgi)
+        new_turi = validated_data.get("turi", instance.turi)
+        new_ijro_muddati = validated_data.get("ijro_muddati", instance.ijro_muddati)
+        new_parol = validated_data.get("parol")
+
+
+        
+        
+        bildirgi_was_sent = "bildirgi" in validated_data
+        new_bildirgi = validated_data.get("bildirgi", None)
+        
+        
+        # 2. Asosiy arizani yangilash
+        instance.status = "jarayonda"
+        instance.qayta_yuklandi = True
+        instance.turi = new_turi
+        instance.ijro_muddati = new_ijro_muddati
+        
+        # Agar yangi bildirgi fayli yuborilgan bo'lsa yangilaymiz
+        if bildirgi_was_sent:
+            instance.bildirgi = new_bildirgi
+            
+        instance.save()
+
+        step = KelganArizalar.objects.create(
+            ariza=instance,
+            created_by=user,
+            comment=new_comment,
+            status="jarayonda",
+            is_approved=user.is_superuser,
+            turi=new_turi,
+            ijro_muddati=new_ijro_muddati,
+            parol=new_parol,
+            # Agar bildirgi yangilangan bo'lsa stepga ham biriktiramiz
+            bildirgi=new_bildirgi if bildirgi_was_sent else None
+        )
+
+        # 4. Rasmlarni bog‘lash
+        # Agar yangi rasm yuborilgan bo'lsa, ularni yangi stepga biriktiramiz
+        if new_photos:
+            for img in new_photos:
+                # Eslatma: Model nomingiz KelganArizaImage yoki KelganArizalarImage ekanligini tekshiring
+                KelganArizaImage.objects.create(step=step, rasm=img)
+        else:
+            
+            pass
+
+        return instance
+
+
+
+
+
+
+
+
+
+
+
+# class KelganArizaImagesSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = KelganArizalarImage
+#         fields = ["id","rasm"]
+
+
+class KelganArizalarSerializer(serializers.ModelSerializer):
+    created_by = serializers.CharField(source="created_by.username", read_only=True)
+    ariza_comment = serializers.CharField(source="ariza.comment", read_only=True)
+    ariza_tuzilma = serializers.CharField(source="ariza.tuzilma.tuzilma_nomi", read_only=True)
+    
+    # bu yerda SerializerMethodField ishlatiladi
+    ariza_kim_tomonidan = serializers.SerializerMethodField()
+    
+    sana = serializers.DateTimeField(format="%d-%m-%Y %H:%M", read_only=True)
+    ariza = serializers.PrimaryKeyRelatedField(
+        queryset=ArizaYuborish.objects.all(),  
+        write_only=True
+    )
+    parol = serializers.CharField(write_only=True)
+    # rasmlar = KelganArizaImagesSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = KelganArizalar
+        fields = [
+            "id", "akt_file",'ilovalar', "comment", "created_by", 
+            "is_approved", "sana", "ariza_comment", "ariza_tuzilma", 
+            "ariza_kim_tomonidan", "ariza", "parol"
+        ]
+        read_only_fields = [
+            "created_by", "is_approved", "sana",
+            "ariza_comment", "ariza_tuzilma", "ariza_kim_tomonidan"
+        ]
+
+    def get_ariza_kim_tomonidan(self, obj):
+        user = obj.ariza.kim_tomonidan
+        if not user:
+            return None
+        
+        request = self.context.get('request')
+
+        # Foydalanuvchining rasmi va nomini aniqlash
+        if user.tarkibiy_tuzilma and user.tarkibiy_tuzilma.photo:
+            photo_url = request.build_absolute_uri(user.tarkibiy_tuzilma.photo.url) if request else None
+            name = user.tarkibiy_tuzilma.tuzilma_nomi
+        elif user.bekat_nomi and user.bekat_nomi.photo:
+            photo_url = request.build_absolute_uri(user.bekat_nomi.photo.url) if request else None
+            name = user.bekat_nomi.bekat_nomi
+        else:
+            photo_url = request.build_absolute_uri(user.photo.url) if (user.photo and request) else None
+            name = user.username
+
+        return {
+            "name": name,
+            "photo": photo_url
+        }
+    
+    
+    # def validate_rasmlar(self, rasmlar):
+    #     for img in rasmlar:
+    #         validate_image_format(img)
+    #     return rasmlar
+
+
+    def validate_parol(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Parol noto'g'ri!")
+        return value
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        # images = validated_data.pop("rasmlar", [])
+        
+        validated_data.pop('created_by', None)
+        validated_data.pop('is_approved', None)
+        akt_file = validated_data.pop('akt_file', None)
+        ilovalar = validated_data.pop('ilovalar', None)
+
+        kelgan = KelganArizalar.objects.create(
+            created_by=user,
+            status="tasdiqlanmoqda",
+            is_approved=user.is_superuser,
+            akt_file=akt_file,
+            ilovalar=ilovalar,
+            **validated_data
+        )
+        print("Validated data:", validated_data)
+
+        # # Multi-image save
+        # for img in images:
+        #     KelganArizalarImage.objects.create(kelgan=kelgan, rasm=img)
+
+        # Asosiy ariza statusini "bajarildi" ga o'zgartirish
+        kelgan.ariza.status = "tasdiqlanmoqda"
+        kelgan.ariza.save()
+
+        return kelgan
+
+    
+    
+    
+    def update(self, instance, validated_data):
+        # images = validated_data.pop("rasmlar", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # if images:
+        #     for img in images:
+        #         KelganArizalarImage.objects.create(kelgan=instance, rasm=img)
+
+        return instance
+
+
+
+
+
+
+
+
+
+
+
+
+
+# serializers.py
+class KelganArizaSerializer(serializers.ModelSerializer):
+    created_by = serializers.SerializerMethodField()
+    sana = serializers.DateTimeField(format=None)
+    akt_file = serializers.FileField(use_url=True)
+    bildirgi = serializers.FileField(use_url=True, required=False)
+    rasmlar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KelganArizalar
+        fields = [
+            "id",
+            "comment",
+            "status",
+            "created_by",
+            "is_approved",
+            "sana",
+            "akt_file",
+            "ilovalar",
+            "bildirgi",
+            "rasmlar"
+        ]
+
+    def get_created_by(self, obj):
+        user = obj.created_by
+        return user.get_full_name() or user.username if user else None
+    
+    def get_rasmlar(self, obj):
+        request = self.context.get('request')
+        return [
+            request.build_absolute_uri(img.rasm.url) 
+            for img in obj.rasmlar.all()
+        ]
+
+
+class ArizaYuborishWithKelganSerializer(ArizaYuborishSerializer):
+    kelganlar = KelganArizaSerializer(many=True, read_only=True)
+    parol = serializers.CharField(write_only=True)
+    bildirgi = serializers.FileField(read_only=True)
+    rasmlar = ArizaImagesSerializer(many=True, read_only=True)
+    tuzilma = serializers.CharField(source="tuzilma.tuzilma_nomi", read_only=True)
+    kim_tomonidan = serializers.SerializerMethodField()
+    created_by = serializers.CharField(source="created_by.username", read_only=True)
+    turi = serializers.CharField(read_only=True)
+    ijro_muddati = serializers.DateField(read_only=True)
+
+    class Meta:
+        model = ArizaYuborish
+        fields = [
+            "id", "comment", "sana", "parol", "status", "is_approved",
+            "tuzilma","extra_comment", "kim_tomonidan", "created_by", "kelganlar", "rasmlar", "bildirgi", "turi", "ijro_muddati"
+        ]
+
+    def get_kim_tomonidan(self, obj):
+        user = obj.kim_tomonidan
+        if not user:
+            return None
+        
+        request = self.context.get('request')
+
+        # Foydalanuvchining rasmi va nomini aniqlash
+        if user.tarkibiy_tuzilma:
+            name = user.tarkibiy_tuzilma.tuzilma_nomi
+            photo_url = request.build_absolute_uri(user.tarkibiy_tuzilma.photo.url) if (user.tarkibiy_tuzilma.photo and request) else None
+        elif user.bekat_nomi:
+            name = user.bekat_nomi.bekat_nomi
+            photo_url = request.build_absolute_uri(user.bekat_nomi.photo.url) if (user.bekat_nomi.photo and request) else None
+        else:
+            name = user.username
+            photo_url = request.build_absolute_uri(user.photo.url) if (user.photo and request) else None
+
+        return {
+            "name": name,
+            "photo": photo_url
+        }
+
+
+
+
+
+
+class ArizaStatusUpdateSerializer(serializers.Serializer):
+    ariza = serializers.PrimaryKeyRelatedField(
+        queryset=ArizaYuborish.objects.all()
+    )
+
+    holat = serializers.ChoiceField(
+        choices=ArizaYuborish.STATUS
+    )
+
+    comment = serializers.CharField(required=False, allow_blank=True)
+    akt_file = serializers.FileField(required=False)
+    ilovalar = serializers.FileField(required=False)
+    photos = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False
+    )
+    
+
+
+
+    def validate(self, data):
+        ariza_obj = data['ariza']
+        
+        # 1. O'zgartirib bo'lmaydigan yakuniy holatlar ro'yxati
+        # Modelingizdagi keylar: 'bajarilgan' va 'rad etildi' (yoki 'rad_etildi')
+        locked_statuses = ['bajarilgan']
+        
+        if ariza_obj.status in locked_statuses:
+            # Foydalanuvchiga tushunarli bo'lishi uchun joriy holat nomini olamiz
+            current_label = ariza_obj.get_status_display()
+            
+            raise serializers.ValidationError({
+                "ariza": f"Bu ariza allaqachon '{current_label}' holatida. Yakunlangan arizani qayta tahrirlash taqiqlanadi!"
+            })
+            
+        return data
+
+
+
+
+        
+        
+    
+
+class PPRTuriSerializer(serializers.ModelSerializer):
+    
+    user = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+    
+    
+    class Meta:
+        model = PPRTuri
+        fields = ["id", "nomi", "qisqachanomi", "davriyligi", "vaqti", "comment", "file", "kimlar_qiladi", "user", "tarkibiy_tuzilma", "bekat", "bolim"]
+        read_only_fields = ['tarkibiy_tuzilma', 'bekat', 'bolim']
+        
+        extra_kwargs = {
+            'nomi': {'required': True},
+            'qisqachanomi': {'required': True},
+            'davriyligi': {'required': True},
+            'vaqti': {'required': True},
+            'comment': {'required': True},
+            'file': {'required': False},
+            'kimlar_qiladi': {'required': True},
+        }
+        
+        
+    
+    def update(self, instance, validated_data):
+        # Fayl mavjud bo'lmasa yoki None bo'lsa, eski faylni saqlaymiz
+        file_value = validated_data.get('file', instance.file)
+        if file_value is None:
+            validated_data['file'] = instance.file
+
+        return super().update(instance, validated_data)
+
+        
+    # def create(self, validated_data):
+    #         user = self.context['request'].user
+    #         validated_data['user'] = user
+    #         return super().create(validated_data)
+
+
+
+
+
+
+
+class ObyektLocationSerializer(serializers.ModelSerializer):
+    obyekt_name = serializers.CharField(
+        source='obyekt.obyekt_nomi',
+        read_only=True
+    )
+
+    class Meta:
+        model = ObyektLocation
+        fields = ['id', 'obyekt', 'obyekt_name', 'lat', 'lng', 'created_at']
+        extra_kwargs = {
+            'obyekt': {'required': True}  
+        }
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+
+        # PUT/PATCH da obyekt umuman o‘chadi
+        if request and request.method in ['PUT', 'PATCH']:
+            fields.pop('obyekt')
+
+        return fields
+        
+        
+        
+        
+class ObyektNomiSerializer(serializers.ModelSerializer):
+    location = ObyektLocationSerializer(read_only=True)
+    
+    
+    class Meta:
+        model = ObyektNomi
+        fields = ['id', 'obyekt_nomi', 'toliq_nomi', 'location', 'tarkibiy_tuzilma', 'bekat', 'bolim']
+        read_only_fields = ['tarkibiy_tuzilma', 'bekat', 'bolim']
+
+
+
+
+class PPRBajarildiImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PPRBajarildiImage
+        fields = ['id', 'image']
+
+
+
+
+
+class PPRBajarildiSerializer(serializers.ModelSerializer):
+    user = serializers.StringRelatedField(read_only=True)
+    images = PPRBajarildiImageSerializer(many=True, read_only=True)
+    bajarilgan_obyektlar = serializers.PrimaryKeyRelatedField(
+        queryset=ObyektNomi.objects.all(),
+        many=True,
+        required=False
+    )
+    foiz = serializers.SerializerMethodField()
+    bajarilgan_obyektlar_nomi = serializers.StringRelatedField(source='bajarilgan_obyektlar', many=True, read_only=True)
+
+    class Meta:
+        model = PPRBajarildi
+        fields = [
+            'id', 'jadval', 'bajarilgan_obyektlar', 'bajarilgan_obyektlar_nomi', 
+            'comment', 'file', 'foiz', 'created_at', 'images', 'user'
+        ]
+        
+    
+    
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = request.user
+        jadval = attrs.get('jadval')
+
+        if not jadval:
+            raise serializers.ValidationError({"jadval": "Jadval majburiy"})
+
+        # 1. Status tekshirish
+        if jadval.status != "tasdiqlandi":
+            raise serializers.ValidationError({
+                "jadval": "Faqat tasdiqlangan jadval bajarilishi mumkin!"
+            })
+
+        # 2. RUXSATLAR ZANJIRI
+        
+        
+        if user.is_superuser or user.is_admin():
+            return attrs
+
+        if user.role == "tarkibiy":
+            return attrs
+
+        user_bolim_profile = getattr(user, 'bolim_profile', None)
+        
+        if not user_bolim_profile:
+            raise serializers.ValidationError({
+                "jadval": "Sizga bo‘lim biriktirilmagan, shuning uchun amalni bajara olmaysiz!"
+            })
+
+        user_bolim_cat = user_bolim_profile.bolim_category
+        
+        # Foydalanuvchi o'z bo'limiga tegishli jadvalni bajaryaptimi?
+        if user_bolim_cat != jadval.bolim_category:
+            raise serializers.ValidationError({
+                "jadval": "Siz faqat o'z bo'limingizga tegishli jadvallarni bajarishingiz mumkin!"
+            })
+
+        # D) Monitoring tekshiruvi (Agar monitoring bo'lsa, POST qilishga ruxsat bermaymiz)
+        if hasattr(user, 'is_monitoring') and user.is_monitoring():
+            raise serializers.ValidationError({
+                "detail": "Monitoring xodimi faqat ma'lumotlarni ko'ra oladi, bajarishga ruxsat yo'q!"
+            })
+
+        return attrs
+
+        
+
+
+
+    def to_internal_value(self, data):
+        # MUHIM: data.copy() qilmang!
+        # Shunchaki super() ga yuboramiz. 
+        # DRF PrimaryKeyRelatedField(many=True) o'zi getlist ni tushunadi.
+        return super().to_internal_value(data)
+    
+    
+    def get_foiz(self, obj):
+        # Jadvaldagi jami obyektlar soni
+        jami_count = obj.jadval.obyektlar.count()
+        if jami_count == 0:
+            return 0
+        
+        shu_stepdagi_soni = obj.bajarilgan_obyektlar.count()
+        
+        return round((shu_stepdagi_soni / jami_count) * 100, 2)
+
+    
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = request.user
+        
+        # 1. Ma'lumotlarni ajratib olish
+        # validated_data ichida bajarilganlar_list allaqachon ObyektNomi instansiyalari bo'ladi
+        bajarilganlar_list = validated_data.pop('bajarilgan_obyektlar', [])
+        jadval = validated_data['jadval']
+
+        # 2. Tekshiruvlar (Buni validate() metodiga o'tkazish tavsiya qilinadi, lekin create'da ham qolishi mumkin)
+        if jadval.status != "tasdiqlandi":
+            raise serializers.ValidationError({"jadval": "Faqat tasdiqlangan jadval bajarilishi mumkin!"})
+
+        jadval_obyekt_ids = set(jadval.obyektlar.values_list('id', flat=True))
+        tanlangan_ids = set(obj.id for obj in bajarilganlar_list)
+
+        if not tanlangan_ids.issubset(jadval_obyekt_ids):
+            raise serializers.ValidationError({"bajarilgan_obyektlar": "Tanlangan obyekt ushbu PPRga biriktirilmagan!"})
+
+        # Allaqachon bajarilganlarni tekshirish (id__in ishlatish tezroq ishlaydi)
+        oldin_bajarilgan_ids = set(
+            PPRBajarildi.objects.filter(jadval=jadval)
+            .values_list('bajarilgan_obyektlar__id', flat=True)
+        )
+
+        if tanlangan_ids.intersection(oldin_bajarilgan_ids):
+            raise serializers.ValidationError({"bajarilgan_obyektlar": "Bu obyektlardan ba'zilari allaqachon bajarilgan!"})
+
+        # 3. SAQLASH (Tranzaksiya bilan)
+        # Agar rasm saqlashda xato bo'lsa, baza orqaga qaytishi (rollback) uchun atomic ishlatamiz
+        with transaction.atomic():
+            # Asosiy modelni yaratish
+            instance = PPRBajarildi.objects.create(user=user, **validated_data)
+            
+            # ManyToMany bog'liqlikni o'rnatish (Qayta so'rov yubormasdan to'g'ridan-to'g'ri instansiyalarni beramiz)
+            instance.bajarilgan_obyektlar.set(bajarilganlar_list)
+            
+            # Rasmlarni saqlash
+            images_data = request.FILES.getlist('images')
+            for image_file in images_data:
+                PPRBajarildiImage.objects.create(bajarildi=instance, image=image_file)
+
+            # 4. Statusni yangilash mantiqi
+            # Eng oxirgi holatni tekshirish uchun jami bajarilganlarni qayta hisoblaymiz
+            barcha_bajarilgan_ids = set(
+                PPRBajarildi.objects.filter(jadval=jadval)
+                .values_list('bajarilgan_obyektlar__id', flat=True)
+            )
+
+            if jadval_obyekt_ids.issubset(barcha_bajarilgan_ids):
+                jadval.status = "bajarildi"
+                jadval.save(update_fields=["status"])
+
+        return instance
+
+
+
+
+
+class ObyektMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ObyektNomi
+        fields = ['id', 'obyekt_nomi']
+
+
+
+
+
+class PPRJadvalSerializer(serializers.ModelSerializer):
+    # Ko'p obyektlarni qabul qilish uchun PrimaryKeyRelatedField (M2M uchun)
+    obyektlar = ObyektMiniSerializer(many=True, read_only=True)
+    sana = serializers.DateField(required=True, allow_null=False)
+    obyektlar_ids = serializers.PrimaryKeyRelatedField(
+        queryset=ObyektNomi.objects.all(),
+        many=True,
+        write_only=True
+    )
+    ppr_turi = serializers.PrimaryKeyRelatedField(queryset=PPRTuri.objects.none()) 
+    bolim_nomi = serializers.CharField(source='bolim_category.nomi', read_only=True)
+    ppr_davriyligi = serializers.CharField(source='ppr_turi.davriyligi', read_only=True)
+    ppr_turi_name = serializers.CharField(source='ppr_turi.qisqachanomi', read_only=True)
+    muddat = serializers.SerializerMethodField()
+    steps = PPRBajarildiSerializer(source='bajarildilar', many=True, read_only=True)
+    umumiy_foiz = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PPRJadval
+        fields = [
+            'id', 'sana', 'obyektlar', 'obyektlar_ids', 'ppr_turi', 'bolim_category', 'bolim_nomi', 
+            'ppr_turi_name', 'ppr_davriyligi', 'comment', 'status', 'muddat','umumiy_foiz', 'steps'
+        ]
+        read_only_fields = ['bolim_category', 'tarkibiy_tuzilma', 'bekat', 'bolim']
+
+    
+    def get_muddat(self, obj):
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        # 1. AGAR bazada allaqachon True bo'lsa, statusdan qat'i nazar True qaytarish.
+        # Bu mantiq "bajarildi" bo'lganda ham True qolishini ta'minlaydi.
+        if obj.muddat:
+            return True
+            
+        # 2. Hozirgi vaqtni olish
+        bugun = timezone.now().date()
+        
+        # 3. Agar hali False bo'lsa, vaqtni tekshiramiz
+        if obj.sana:
+            muddati_o_tgan = bugun > (obj.sana + timedelta(days=3))
+            
+            # Agar vaqt o'tib ketgan bo'lsa, statusidan qat'i nazar True
+            if muddati_o_tgan:
+                return True
+        
+        # 4. Agar yuqoridagilarning hech biri bo'lmasa, status 'bajarildi' bo'lsa False
+        if obj.status == "bajarildi":
+            return False
+
+        return False
+    
+    def validate_sana(self, value):
+        
+        if value is None:
+            raise serializers.ValidationError("Sana kiritilishi majburiy!")
+        return value
+    
+    
+    
+    def validate(self, attrs):
+        instance = self.instance
+        if instance and instance.tasdiqlangan:
+            raise serializers.ValidationError("Tasdiqlangan jadvalni tahrirlash taqiqlanadi!")
+        return attrs
+
+    def get_umumiy_foiz(self, obj):
+        # BU YERDA HAMMA STEPLARNI YIG'INDISI HISOBLANADI
+        jami_count = obj.obyektlar.count()
+        if jami_count == 0: return 0
+        
+        # Barcha bajarilgan takrorlanmas IDlarni yig'amiz
+        bajarilgan_ids = PPRBajarildi.objects.filter(
+            jadval=obj
+        ).values_list('bajarilgan_obyektlar', flat=True).distinct()
+        
+        # None-larni filtrlash
+        bajarilgan_ids = [idx for idx in bajarilgan_ids if idx is not None]
+        
+        return round((len(set(bajarilgan_ids)) / jami_count) * 100, 2)
+    
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+
+        if user and not user.is_anonymous:
+            # PPR TURI Filter
+            if user.is_superuser or user.is_admin():
+                self.fields['ppr_turi'].queryset = PPRTuri.objects.all()
+            elif user.role == 'bolim':
+                # Foydalanuvchining bo'lim kategoriyasini olamiz
+                bolim_cat = getattr(user.bolim_profile, 'bolim_category', None)
+                if bolim_cat:
+                    
+                    self.fields['ppr_turi'].queryset = PPRTuri.objects.filter(
+                        user__bolim_profile__bolim_category=bolim_cat
+                    ).distinct()
+                else:
+                    self.fields['ppr_turi'].queryset = PPRTuri.objects.none()
+            else:
+                # Boshqa rollar uchun (masalan rahbar) o'ziga tegishlisini ko'rsatish
+                self.fields['ppr_turi'].queryset = PPRTuri.objects.filter(user=user)
+
+            if user.is_bolim():
+                if getattr(user, 'tarkibiy_tuzilma', None):
+                    self.fields['obyektlar'].queryset = ObyektNomi.objects.filter(
+                        tarkibiy_tuzilma=user.tarkibiy_tuzilma
+                    ).order_by('obyekt_nomi')
+            else:
+                self.fields['obyektlar'].queryset = ObyektNomi.objects.all().order_by('obyekt_nomi')
+
+    
+    def create(self, validated_data):
+        obyektlar_data = validated_data.pop('obyektlar_ids', [])
+        user = self.context.get('request').user
+        
+        bolim_category = None
+        if user.role == 'bolim':
+            bolim_profile = getattr(user, 'bolim_profile', None)
+            if bolim_profile and bolim_profile.bolim_category:
+                bolim_category = bolim_profile.bolim_category
+            else:
+                raise serializers.ValidationError({"detail": "Sizda bo'lim biriktirilmagan!"})
+        else:
+            bolim_category = validated_data.get('bolim_category')
+
+        instance = PPRJadval.objects.create(
+            bolim_category=bolim_category,
+            **validated_data
+        )
+
+        if obyektlar_data:
+            instance.obyektlar.set(obyektlar_data)
+    
+
+    
+        return instance        
+
+
+
+            
+
+class PPRYuborishMiniSerializer(serializers.ModelSerializer):
+    oy_nomi = serializers.SerializerMethodField()
+
+    OY_NOMLARI = {
+        1: "Yanvar",
+        2: "Fevral",
+        3: "Mart",
+        4: "Aprel",
+        5: "May",
+        6: "Iyun",
+        7: "Iyul",
+        8: "Avgust",
+        9: "Sentabr",
+        10: "Oktabr",
+        11: "Noyabr",
+        12: "Dekabr",
+    }
+
+    class Meta:
+        model = PPRYuborish
+        fields = ['id', 'yil', 'oy', 'oy_nomi']
+
+    def get_oy_nomi(self, obj):
+        return self.OY_NOMLARI.get(obj.oy)
+
+
+
+
+
+class PPRTasdiqlashDetailSerializer(serializers.ModelSerializer):
+    user = serializers.StringRelatedField()
+    yuborish_paketi = PPRYuborishMiniSerializer()
+
+    class Meta:
+        model = PPRTasdiqlash
+        fields = [
+            'id',
+            'created_at',
+            'user',
+            'status',
+            'comment',
+            'yuborish_paketi'
+        ]
+
+
+
+
+
+
+# Yuborish Serializer
+class PPRYuborishSerializer(serializers.ModelSerializer):
+    oy_nomi = serializers.SerializerMethodField()
+    yil = serializers.IntegerField(required=False)
+    oy = serializers.IntegerField(required=False)
+    OY_NOMLARI = {
+        1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel",
+        5: "May", 6: "Iyun", 7: "Iyul", 8: "Avgust",
+        9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr",
+    }
+
+    class Meta:
+        model = PPRYuborish
+        fields = ['id', 'yil', 'oy', 'oy_nomi', 'status', 'comment']
+        # PUT/PATCH so'rovida yil va oyni o'zgartirib bo'lmaydigan qilamiz
+        extra_kwargs = {
+            'yil': {'required': False},
+            'oy': {'required': False},
+            'is_active': {'read_only': True} 
+        }
+        read_only_fields = ['status']
+
+    def get_oy_nomi(self, obj):
+        return self.OY_NOMLARI.get(obj.oy)
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        yil = validated_data['yil']
+        oy = validated_data['oy']
+
+        # Tekshirish: Bu oy uchun faqat aktiv paket bormi?
+        existing_packet = PPRYuborish.objects.filter(
+            yil=yil, oy=oy,
+            bolim_category=user.bolim_profile.bolim_category,
+            tarkibiy_tuzilma=user.tarkibiy_tuzilma,
+            is_active=True
+        ).first()
+
+        if existing_packet:
+            if existing_packet.status == 'tasdiqlandi':
+                raise serializers.ValidationError("Bu oy uchun hisobot allaqachon tasdiqlangan!")
+            raise serializers.ValidationError({
+                "error": "Bu oy uchun paket mavjud.",
+                "id": existing_packet.id,
+                "status": existing_packet.status
+            })
+
+        # Jadvallarni 'yuborildi' holatiga o'tkazish
+        jadvallar = PPRJadval.objects.filter(
+            created_by=user, sana__year=yil, sana__month=oy,
+            status__in=['jarayonda', 'rad_etildi']
+        )
+
+        if not jadvallar.exists():
+            raise serializers.ValidationError("Yuborish uchun jadvallar topilmadi!")
+
+        jadvallar.update(status='yuborildi')
+
+        # Yangi paket yaratish (faqat aktiv)
+        return PPRYuborish.objects.create(
+            user=user,
+            yil=yil,
+            oy=oy,
+            comment=validated_data.get('comment', ''),
+            bolim_category=user.bolim_profile.bolim_category,
+            tarkibiy_tuzilma=user.tarkibiy_tuzilma,
+            status='yuborildi',
+            is_active=True
+        )
+
+    def update(self, instance, validated_data):
+        if instance.status == 'tasdiqlandi':
+            raise serializers.ValidationError("Tasdiqlangan paketni qayta yuborib bo'lmaydi!")
+
+        user = self.context['request'].user
+        bolim = instance.bolim_category
+        tuzilma = instance.tarkibiy_tuzilma
+        yil = instance.yil
+        oy = instance.oy
+
+        with transaction.atomic():
+            # 1️⃣ Eskisini inaktiv qilish
+            instance.is_active = False
+            instance.save()
+
+            # 2️⃣ Yangi paket yaratish
+            new_instance = PPRYuborish.objects.create(
+                user=user,
+                yil=yil,
+                oy=oy,
+                bolim_category=bolim,
+                tarkibiy_tuzilma=tuzilma,
+                status='yuborildi',
+                comment=validated_data.get('comment', 'Qayta yuborildi'),
+                is_active=True
+            )
+
+            # 3️⃣ Jadvallarni yangilash
+            PPRJadval.objects.filter(
+                bolim_category=bolim,
+                tarkibiy_tuzilma=tuzilma,
+                sana__year=yil,
+                sana__month=oy
+            ).update(status='yuborildi')
+
+        return new_instance
+
+
+
+class PPRTasdiqlashSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PPRTasdiqlash
+        fields = ['yuborish_paketi', 'status', 'comment']
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        # Faqat Rahbar (is_tarkibiy) yoki Admin tasdiqlay oladi
+        if not (user.is_tarkibiy() or user.is_superuser or user.is_admin()):
+            raise serializers.ValidationError("Sizda tasdiqlash huquqi yo'q!")
+        
+        paketi = attrs['yuborish_paketi']
+        # Rahbar faqat o'z tuzilmasiga kelgan paketni tasdiqlay oladi
+        if user.is_tarkibiy() and paketi.tarkibiy_tuzilma != user.tarkibiy_tuzilma:
+            raise serializers.ValidationError("Siz boshqa tuzilmaning paketini tasdiqlay olmaysiz!")
+            
+        return attrs
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        paketi = validated_data['yuborish_paketi']
+        yangi_status = validated_data['status'] # 'tasdiqlandi' yoki 'rad_etildi'
+        izoh = validated_data.get('comment', '')
+
+        # 1. Paket statusini yangilash
+        paketi.status = yangi_status
+        paketi.save()
+
+        # 2. Paket ichidagi jadvallar statusini yangilash
+        from .models import PPRJadval
+        jadvallar = PPRJadval.objects.filter(
+            bolim_category=paketi.bolim_category,
+            tarkibiy_tuzilma=paketi.tarkibiy_tuzilma,
+            sana__year=paketi.yil, 
+            sana__month=paketi.oy
+        )
+        
+        if yangi_status == 'tasdiqlandi':
+            jadvallar.update(status='tasdiqlandi', tasdiqlangan=True)
+        else:
+            jadvallar.update(status='rad_etildi')
+
+        # 3. Tasdiqlash tarixini yangilash yoki yaratish (OneToOneField uchun)
+        tasdiq_obj, created = PPRTasdiqlash.objects.update_or_create(
+            yuborish_paketi=paketi,
+            defaults={
+                'user': user,
+                'status': yangi_status,
+                'comment': izoh
+            }
+        )
+
+        return tasdiq_obj
+
+   
+   
+   
+          
+class PPRYuborishStatusSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    yil = serializers.IntegerField()
+    oy = serializers.IntegerField()
+    oy_nomi = serializers.SerializerMethodField()
+    status = serializers.CharField()
+    yaratuvchi_user = serializers.CharField()  
+    yaratilgan_sana = serializers.ReadOnlyField()
+    tasdiqlashlar = serializers.ListField()
+    yuborish_id = serializers.IntegerField(allow_null=True)
+    OY_NOMLARI = {
+        1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun",
+        7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"
+    }
+
+    def get_oy_nomi(self, obj):
+        return self.OY_NOMLARI.get(obj['oy'])
+    
+    
+    
+
+    def get_oy_nomi(self, obj):
+        return self.OY_NOMLARI.get(obj['oy'])
+
+
+
+
+class PPRJarayondaOylikSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    yil = serializers.IntegerField()
+    oy = serializers.IntegerField()
+    oy_nomi = serializers.SerializerMethodField()
+    status = serializers.CharField()
+    yaratilgan_sana = serializers.DateField()
+
+    OY_NOMLARI = {
+        1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun",
+        7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"
+    }
+
+    def get_oy_nomi(self, obj):
+        return self.OY_NOMLARI.get(obj['oy'])
+
+
+
+
+
+
+
+
+
+# ppr/serializers.py
+class NotificationSerializer(serializers.ModelSerializer):
+    seen_usernames = serializers.SlugRelatedField(
+        many=True, read_only=True, slug_field='username', source='seen_by'
+    )
+    is_read = serializers.BooleanField(required=False)
+    read_time = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = ['id', 'title', 'message', 'link_id', 'is_read', 'seen_usernames','read_time', 'created_at']
+        read_only_fields = ['id', 'title', 'message', 'link_id', 'seen_usernames', 'read_time', 'created_at']
+
+
+    def get_read_time(self, obj):
+        request = self.context.get('request')
+
+        if request and request.user.is_authenticated:
+            user_id = str(request.user.id)
+
+            if obj.read_times and user_id in obj.read_times:
+                dt = timezone.datetime.fromisoformat(obj.read_times[user_id])
+
+                # timezone ga o'tkazish
+                dt = timezone.localtime(dt)
+
+                return dt.strftime("%d-%m-%Y %H:%M")
+
+            if obj.seen_by.filter(id=request.user.id).exists():
+                dt = timezone.localtime(obj.created_at)
+                return dt.strftime("%d-%m-%Y %H:%M")
+
+        return None
+    
+    
+    def to_representation(self, instance):
+    
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        if request and request.user.is_authenticated:
+            # Bazadagi ManyToMany ni tekshiramiz
+            ret['is_read'] = instance.seen_by.filter(id=request.user.id).exists()
+        else:
+            ret['is_read'] = False
+        return ret
+
+
+
+
+class HujjatlarSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hujjatlar
+        fields = "__all__"
+
+
+
+class HujjatShabloniSerializer(serializers.ModelSerializer):
+    # O'qish uchun qulay format (nomini chiqaradi)
+    tuzilma_nomi = serializers.CharField(source='tuzilma.tuzilma_nomi', read_only=True)
+    yuklovchi_ismi = serializers.CharField(source='yuklovchi.username', read_only=True)
+
+    class Meta:
+        model = HujjatShabloni
+        fields = [
+            'id', 
+            'nomi', 
+            'file',           
+            'tuzilma',        
+            'tuzilma_nomi',    
+            'yuklovchi_ismi',
+            'created_at'
+        ]
+        read_only_fields = ['yuklovchi', 'created_at']
+        
+        
+
+
+
+
+class TuzilmaDashboardSerializer(serializers.Serializer):
+    tuzilma_nomi = serializers.CharField()
+    rahbari = serializers.CharField() 
+    bajarilgan_soni = serializers.IntegerField()
+    umumiy_kelgan_soni = serializers.IntegerField()
+    bajarish_foizi = serializers.SerializerMethodField()
+
+    def get_bajarish_foizi(self, obj):
+        if obj['umumiy_kelgan_soni'] == 0:
+            return 0
+        return round((obj['bajarilgan_soni'] / obj['umumiy_kelgan_soni']) * 100, 1)
+
+
+
+
+
+
+
+
+
+
+
+
+class XaridStepSerializer(serializers.ModelSerializer):
+    tuzilma_nomi = serializers.CharField(source="tuzilma.tuzilma_nomi", read_only=True)
+    user_nomi = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = XaridStep
+        fields = ["id", "tuzilma_nomi", "user_nomi", "status", "comment", "sana"]
+
+
+
+
+
+
+class XaridArizaSerializer(serializers.ModelSerializer):
+    steplar = XaridStepSerializer(many=True, read_only=True)
+    tuzilma_nomlari = serializers.SerializerMethodField()
+    tuzilmalar = serializers.PrimaryKeyRelatedField(
+        many=True, 
+        queryset=TarkibiyTuzilma.objects.all(), 
+        required=False 
+    )
+    kim_tomonidan_nomi = serializers.SerializerMethodField()
+    class Meta:
+        model = XaridAriza
+        fields = ["id", "tuzilmalar",'kim_tomonidan_nomi', "tuzilma_nomlari", "comment", "fayl", "sana", "status", "steplar"]
+
+    def get_tuzilma_nomlari(self, obj):
+        return [t.tuzilma_nomi for t in obj.tuzilmalar.all()]
+    
+    
+    def get_kim_tomonidan_nomi(self, obj):
+        user = obj.kim_tomonidan
+        if not user:
+            return "Noma'lum"
+        
+        # 1. To'g'ridan-to'g'ri tarkibiy tuzilmasini tekshirish
+        if user.tarkibiy_tuzilma:
+            return user.tarkibiy_tuzilma.tuzilma_nomi
+        
+        # 2. Agar bo'limi bo'lsa va u orqali tuzilmaga bog'langan bo'lsa
+        if hasattr(user, 'bolim') and user.bolim and user.bolim.tarkibiy_tuzilma:
+            return user.bolim.tarkibiy_tuzilma.tuzilma_nomi
+            
+        # 3. Agar bekat bo'lsa
+        if user.bekat_nomi:
+            return user.bekat_nomi.bekat_nomi
+            
+        return user.username
+    
+    
+class XaridQarorActionSerializer(serializers.Serializer):
+    # Bu maydonlar Swagger/Form interfeysida chiqadi
+    STATUS_CHOICES = (
+        ("kelishildi", "Kelishildi"),
+        ("rad_etildi", "Rad etildi"),
+    )
+    status = serializers.ChoiceField(choices=STATUS_CHOICES)
+    comment = serializers.CharField(required=False, allow_blank=True)
