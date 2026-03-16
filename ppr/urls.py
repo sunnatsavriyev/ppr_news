@@ -24,8 +24,8 @@ router.register("notifications", NotificationViewSet, basename="notifications")
 router.register("yuborish-status", PPRYuborishStatusViewSet, basename="yuborish-status")
 router.register('ppr-jarayonda', PPRJarayondaOylikViewSet, basename='ppr-jarayonda')
 router.register('hujjatlar_shabloni', HujjatShabloniViewSet, basename='hujjatlar_shabloni')
-# router.register('xarid-ariza', XaridArizaViewSet, basename='xarid-ariza')
-# router.register('xarid-kelganlar', XaridKelganlarViewSet, basename='xarid-kelganlar')
+router.register('xarid-ariza', XaridArizaViewSet, basename='xarid-ariza')
+router.register('xarid-kelganlar', XaridKelganlarViewSet, basename='xarid-kelganlar')
 
 urlpatterns = [
     path("", include(router.urls)),

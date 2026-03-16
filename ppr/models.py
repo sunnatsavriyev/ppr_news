@@ -650,42 +650,42 @@ class HujjatShabloni(models.Model):
  
         
         
-# class XaridAriza(models.Model):
-#     STATUS_CHOICES = (
-#         ("yuborildi", "Yuborildi"),
-#         ("kelishildi", "Kelishildi"), 
-#         ("tasdiqlandi", "Tasdiqlandi"), 
-#         ("rad_etildi", "Rad etildi"),
-#     )
+class XaridAriza(models.Model):
+    STATUS_CHOICES = (
+        ("yuborildi", "Yuborildi"),
+        ("kelishildi", "Kelishildi"), 
+        ("tasdiqlandi", "Tasdiqlandi"), 
+        ("rad_etildi", "Rad etildi"),
+    )
     
-#     tuzilmalar = models.ManyToManyField('TarkibiyTuzilma', related_name="xarid_arizalari")
-#     comment = models.TextField(verbose_name="Ariza mazmuni")
-#     kim_tomonidan = models.ForeignKey(
-#         settings.AUTH_USER_MODEL, 
-#         on_delete=models.CASCADE, 
-#         related_name="yuborilgan_xarid_arizalari",
-#         null=True, 
-#         blank=True, 
-#     )
-#     fayl = models.FileField(upload_to='xarid_arizalari/',null=True, blank=True)
-#     sana = models.DateTimeField(auto_now_add=True)
-#     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="yuborildi")
-#     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    tuzilmalar = models.ManyToManyField('TarkibiyTuzilma', related_name="xarid_arizalari")
+    comment = models.TextField(verbose_name="Ariza mazmuni")
+    kim_tomonidan = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name="yuborilgan_xarid_arizalari",
+        null=True, 
+        blank=True, 
+    )
+    fayl = models.FileField(upload_to='xarid_arizalari/',null=True, blank=True)
+    sana = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="yuborildi")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
-#     def __str__(self):
-#         return f"Xarid #{self.id} | {self.status}"
+    def __str__(self):
+        return f"Xarid #{self.id} | {self.status}"
 
-# class XaridStep(models.Model):
-#     STEP_STATUS = (
-#         ("kelishildi", "Kelishildi"),
-#         ("rad_etildi", "Rad etildi"),
-#     )
-#     xarid = models.ForeignKey(XaridAriza, on_delete=models.CASCADE, related_name="steplar")
-#     tuzilma = models.ForeignKey('TarkibiyTuzilma', on_delete=models.CASCADE)
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
-#     status = models.CharField(max_length=20, choices=STEP_STATUS)
-#     comment = models.TextField(blank=True, null=True)
-#     sana = models.DateTimeField(auto_now_add=True)
+class XaridStep(models.Model):
+    STEP_STATUS = (
+        ("kelishildi", "Kelishildi"),
+        ("rad_etildi", "Rad etildi"),
+    )
+    xarid = models.ForeignKey(XaridAriza, on_delete=models.CASCADE, related_name="steplar")
+    tuzilma = models.ForeignKey('TarkibiyTuzilma', on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    status = models.CharField(max_length=20, choices=STEP_STATUS)
+    comment = models.TextField(blank=True, null=True)
+    sana = models.DateTimeField(auto_now_add=True)
 
-#     class Meta:
-#         unique_together = ('xarid', 'tuzilma') 
+    class Meta:
+        unique_together = ('xarid', 'tuzilma') 
